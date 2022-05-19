@@ -1,0 +1,80 @@
+() set_default_initial_data() impure {
+  set_data(begin_cell()
+        .store_slice(get_saddr(0))
+        .store_uint(10, 64)
+        .store_uint(20, 64)
+        .end_cell());
+}
+
+;; ;; Every test name should start with "__test"
+int __test_get_numbers() {
+    set_default_initial_data();
+
+    ;; when calling contract's method, 'invoke_method' should be used
+    ;; it catches exceptions, and computes gas usage
+    var (int gas_used, stack) = invoke_method(get_numbers, []);
+    [int n1, int n2] = stack;
+    throw_if(401, (n1 != 10) | (n2 != 20));
+    return gas_used;
+}
+
+
+(int, int) __test_change_numbers() {
+    set_default_initial_data();
+
+    cell body = begin_cell().store_uint(12, 64).store_uint(24, 64).end_cell();
+    slice body_slice = body.begin_parse();
+
+    cell message = begin_cell()    
+            .store_uint(0, 1)
+            .store_uint(1, 1)
+            .store_uint(1, 1)
+            .store_uint(0, 1)
+            .store_slice(get_saddr(0))
+            .store_uint(0, 2)
+            .store_coins(0)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_slice(body_slice)
+        .end_cell();
+
+    var (int gas_used1, _) = invoke_method(recv_internal, [message, body_slice]);
+    var (int gas_used2, stack) = invoke_method(get_numbers, []);
+
+    [int n1, int n2] = stack;
+    throw_if(401, (n1 != 12) | (n2 != 24));
+    return (gas_used1, gas_used2);
+}
+
+
+;; ;; you can copy 'persistent data' from previous test by calling `get_prev_c4()`
+int __test_get_numbers_from_persisted() {
+    set_data(get_prev_c4());
+
+    var (int gas_used, stack) = invoke_method(get_numbers, []);
+    [int n1, int n2] = stack;
+    throw_if(401, (n1 != 12) | (n2 != 24));
+    return gas_used;
+}
+
+
+int __test_change_numbers_not_allowed() {
+    set_default_initial_data();
+
+    cell body = begin_cell().store_uint(12, 64).store_uint(24, 64).end_cell();
+    slice body_slice = body.begin_parse();
+
+    cell message = begin_cell()    
+            .store_uint(0, 1)
+            .store_uint(1, 1)
+            .store_uint(1, 1)
+            .store_uint(0, 1)
+            .store_slice(get_saddr(2)) ;; Not Owner!
+            .store_uint(0, 2)
+            .store_coins(0)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_slice(body_slice)
+        .end_cell();
+
+    int gas_used = invoke_method_expect_fail(recv_internal, [message, body_slice]);
+    return gas_used;
+}
